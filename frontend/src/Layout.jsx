@@ -9,6 +9,7 @@ function Layout() {
         <h3>Menu</h3>
         <ul style={{ listStyle: 'none', padding: 0 }}>
           <li><Link to="/">Trang chủ</Link></li>
+          <Link to="/notes" style={{ marginRight: '15px' }}>Ghi chú (Sprint 2)</Link>
           <li><Link to="/settings">Cài đặt</Link></li>
           <li><Link to="/private">Vùng kín</Link></li>
         </ul>
