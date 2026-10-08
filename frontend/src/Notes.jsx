@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
+
+const topics = { 'Công việc': 'cong-viec', 'Cá nhân': 'ca-nhan', 'Học tập': 'hoc-tap' };
 
 function Notes() {
   const { isDark } = useOutletContext() || {};
@@ -9,34 +11,41 @@ function Notes() {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ title: '', content: '', tag: 'Công việc', isPinned: false });
 
-  const fetchNotes = () => {
-    fetch('http://localhost:5000/api/notes')
-      .then((res) => res.json())
-      .then((data) => setNotes(Array.isArray(data) ? data : []))
+  const fetchNotes = useCallback(() => {
+    Promise.all(Object.entries(topics).map(async ([tag, topic]) => {
+      const res = await fetch(`http://localhost:5000/api/notes/${topic}`);
+      if (!res.ok) throw new Error('Không thể tải ghi chú');
+      const data = await res.json();
+      return (Array.isArray(data) ? data : []).map((note) => ({ ...note, tag }));
+    }))
+      .then((groups) => {
+        const pinnedIds = JSON.parse(localStorage.getItem('pinnedNoteIds') || '[]');
+        setNotes(groups.flat().map((note) => ({ ...note, isPinned: pinnedIds.includes(note.id) })));
+      })
       .catch((err) => console.error(err));
-  };
+  }, []);
 
-  useEffect(() => { fetchNotes(); }, []);
+  useEffect(() => { fetchNotes(); }, [fetchNotes]);
 
   const handleSave = () => {
     if (!formData.title.trim() && !formData.content.trim()) return;
 
     if (editingId) {
-      fetch(`http://localhost:5000/api/notes/${editingId}`, {
+      fetch(`http://localhost:5000/api/notes/${topics[formData.tag]}/${editingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
-      }).then(() => {
+      }).then((res) => { if (!res.ok) throw new Error('Không thể cập nhật ghi chú'); }).then(() => {
         fetchNotes();
         setEditingId(null);
         setFormData({ title: '', content: '', tag: 'Công việc', isPinned: false });
       });
     } else {
-      fetch('http://localhost:5000/api/notes', {
+      fetch(`http://localhost:5000/api/notes/${topics[formData.tag]}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, createdAt: new Date().toLocaleDateString('vi-VN') })
-      }).then(() => {
+      }).then((res) => { if (!res.ok) throw new Error('Không thể thêm ghi chú'); }).then(() => {
         fetchNotes();
         setFormData({ title: '', content: '', tag: 'Công việc', isPinned: false });
       });
@@ -49,15 +58,19 @@ function Notes() {
   };
 
   const handleDelete = (id) => {
-    fetch(`http://localhost:5000/api/notes/${id}`, { method: 'DELETE' }).then(() => fetchNotes());
+    const note = notes.find((item) => item.id === id);
+    if (!note) return;
+    fetch(`http://localhost:5000/api/notes/${topics[note.tag]}/${id}`, { method: 'DELETE' })
+      .then((res) => { if (!res.ok) throw new Error('Không thể xóa ghi chú'); return fetchNotes(); })
+      .catch((err) => console.error(err));
   };
 
   const togglePin = (note) => {
-    fetch(`http://localhost:5000/api/notes/${note.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isPinned: !note.isPinned })
-    }).then(() => fetchNotes());
+    const pinnedIds = new Set(JSON.parse(localStorage.getItem('pinnedNoteIds') || '[]'));
+    if (pinnedIds.has(note.id)) pinnedIds.delete(note.id);
+    else pinnedIds.add(note.id);
+    localStorage.setItem('pinnedNoteIds', JSON.stringify([...pinnedIds]));
+    setNotes((current) => current.map((item) => item.id === note.id ? { ...item, isPinned: !item.isPinned } : item));
   };
 
   const filteredNotes = notes.filter((n) => {
@@ -81,7 +94,7 @@ function Notes() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '26px', fontWeight: '800', color: textColor }}>Ghi chú chung</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: isDark ? '#b0b3b8' : '#65670b' }}>Quản lý công việc và ghi chú hằng ngày</p>
+          <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: isDark ? '#b0b3b8' : '#656b75' }}>Quản lý công việc và ghi chú hằng ngày</p>
         </div>
         <input
           type="text"
@@ -118,10 +131,11 @@ function Notes() {
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', color: isDark ? '#b0b3b8' : '#65670b', fontWeight: '600' }}>Chủ đề:</span>
+            <span style={{ fontSize: '13px', color: isDark ? '#b0b3b8' : '#656b75', fontWeight: '600' }}>Chủ đề:</span>
             <select
               value={formData.tag}
               onChange={(e) => setFormData({ ...formData, tag: e.target.value })}
+              disabled={Boolean(editingId)}
               style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid ${borderCol}`, outline: 'none', backgroundColor: inputBg, color: textColor, fontWeight: '500' }}
             >
               <option value="Công việc">💼 Công việc</option>
@@ -171,11 +185,12 @@ function Notes() {
 
       {/* Ghi chú Khác */}
       <div>
-        {pinnedNotes.length > 0 && <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: isDark ? '#b0b3b8' : '#65670b', letterSpacing: '0.05em', marginBottom: '14px', fontWeight: '800' }}>Danh sách ghi chú</h3>}
+        {pinnedNotes.length > 0 && <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: isDark ? '#b0b3b8' : '#656b75', letterSpacing: '0.05em', marginBottom: '14px', fontWeight: '800' }}>Danh sách ghi chú</h3>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
           {unpinnedNotes.map((note) => (
             <CardItem key={note.id} note={note} isDark={isDark} onDelete={handleDelete} onEdit={handleEdit} onTogglePin={togglePin} />
           ))}
+          {filteredNotes.length === 0 && <p style={{ gridColumn: '1 / -1', color: isDark ? '#b0b3b8' : '#656b75', textAlign: 'center', padding: '32px 16px' }}>{search || selectedTag !== 'All' ? 'Không tìm thấy ghi chú phù hợp.' : 'Chưa có ghi chú nào. Hãy tạo ghi chú đầu tiên của bạn.'}</p>}
         </div>
       </div>
     </div>

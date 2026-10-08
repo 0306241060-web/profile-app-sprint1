@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 
 function Settings() {
   const { isDark } = useOutletContext() || {};
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [theme, setTheme] = useState('light');
   const [loading, setLoading] = useState(false);
@@ -27,17 +28,20 @@ function Settings() {
     setMessage({ text: '', type: '' });
 
     fetch('http://localhost:5000/api/profile', {
-      method: 'POST',
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password, theme })
+      body: JSON.stringify({ currentPassword, password, theme })
     })
-      .then((res) => {
-        if (!res.ok) throw new Error('Lỗi server khi lưu');
-        return res.json();
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Không thể lưu cài đặt');
+        return data;
       })
-      .then((data) => {
+      .then(() => {
         setLoading(false);
         setMessage({ text: '✅ Đã lưu thay đổi thành công!', type: 'success' });
+        setCurrentPassword('');
+        setPassword('');
 
         // PHÁT SỰ KIỆN ĐỔI THEME TOÀN APP CHỈ KHI NÚT LƯU ĐƯỢC BẤM VÀ THÀNH CÔNG
         window.dispatchEvent(new CustomEvent('themeChange', { detail: theme }));
@@ -46,7 +50,7 @@ function Settings() {
       })
       .catch((err) => {
         setLoading(false);
-        setMessage({ text: '❌ Lỗi: Không kết nối được với Backend (Port 5000)', type: 'error' });
+        setMessage({ text: `❌ ${err.message || 'Không kết nối được với máy chủ'}`, type: 'error' });
         console.error('Lỗi save profile:', err);
       });
   };
@@ -77,13 +81,31 @@ function Settings() {
 
       <div style={{ backgroundColor: cardBg, border: `1px solid ${borderCol}`, padding: '32px', borderRadius: '16px', boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
         <div style={{ marginBottom: '24px' }}>
-          <label style={{ display: 'block', fontWeight: '700', marginBottom: '8px', fontSize: '14px', color: textColor }}>
-            🔑 Mật khẩu Vùng kín
+          <label htmlFor="current-private-password" style={{ display: 'block', fontWeight: '700', marginBottom: '8px', fontSize: '14px', color: textColor }}>
+            🔑 Mật khẩu hiện tại
           </label>
           <input
-            type="text"
+            type="password"
+            id="current-private-password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Chỉ cần nhập khi đổi mật khẩu"
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: `1px solid ${borderCol}`, outline: 'none', boxSizing: 'border-box', fontSize: '15px', backgroundColor: inputBg, color: textColor, marginBottom: '12px' }}
+          />
+          <label htmlFor="new-private-password" style={{ display: 'block', fontWeight: '700', marginBottom: '8px', fontSize: '14px', color: textColor }}>
+            Mật khẩu mới
+          </label>
+          <p style={{ margin: '0 0 8px', fontSize: '13px', color: isDark ? '#b0b3b8' : '#6b7280' }}>
+            Để trống để giữ nguyên. Mật khẩu mới cần ít nhất 4 ký tự.
+          </p>
+          <input
+            type="password"
+            id="new-private-password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="Nhập mật khẩu mới"
             style={{ width: '100%', padding: '12px', borderRadius: '8px', border: `1px solid ${borderCol}`, outline: 'none', boxSizing: 'border-box', fontSize: '15px', backgroundColor: inputBg, color: textColor }}
           />
         </div>

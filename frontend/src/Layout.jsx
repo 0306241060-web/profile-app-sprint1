@@ -58,15 +58,15 @@ function Layout() {
   });
 
   return (
-    <div style={{
+    <div className="app-shell" style={{
       display: 'flex',
       minHeight: '100vh',
-      width: '100vw',
+      width: '100%',
       backgroundColor: isDark ? '#18191a' : '#f0f2f5',
       color: isDark ? '#e4e6eb' : '#050505',
     }}>
       {/* Sidebar */}
-      <aside style={{
+      <aside className="app-sidebar" style={{
         width: '280px',
         backgroundColor: isDark ? '#242526' : '#ffffff',
         borderRight: isDark ? '1px solid #393a3b' : '1px solid #e4e6eb',
@@ -104,7 +104,7 @@ function Layout() {
       </aside>
 
       {/* Main Outlet */}
-      <main style={{ flex: 1, padding: '32px 48px', width: 'calc(100vw - 280px)', boxSizing: 'border-box' }}>
+      <main className="app-main" style={{ flex: 1, padding: '32px 48px', minWidth: 0, boxSizing: 'border-box' }}>
         <Outlet context={{ isDark }} />
       </main>
     </div>

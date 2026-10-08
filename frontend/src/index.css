@@ -9,3 +9,50 @@ html, body, #root {
   min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
+
+body {
+  overflow-x: hidden;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100% !important;
+    padding: 14px 16px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid #e4e6eb;
+  }
+
+  .app-sidebar > div:first-child {
+    margin-bottom: 12px !important;
+  }
+
+  .app-sidebar nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  .app-sidebar nav a {
+    white-space: nowrap;
+    margin-bottom: 0 !important;
+    padding: 10px 12px !important;
+  }
+
+  .app-main {
+    padding: 22px 16px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-main input[placeholder^="🔍"] {
+    width: 100% !important;
+  }
+}

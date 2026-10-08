@@ -14,6 +14,7 @@ function App() {
           <Route path="notes" element={<Notes />} />
           <Route path="private" element={<PrivateNotes />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/notes" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
