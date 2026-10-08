@@ -46,7 +46,7 @@ Lưu ý: Frontend sẽ chạy tại `http://localhost:5173` (hoặc cổng khác
 ## 4. Tài khoản / Mật khẩu Demo
 
 Mật khẩu mặc định nhập tài khoản.
-
+Mật khẩu dùng để test là "1234"
 Để xem khu vực Ghi chú riêng tư, vui lòng vào menu "Cài đặt" để tạo mật khẩu mới.
 
 ---
