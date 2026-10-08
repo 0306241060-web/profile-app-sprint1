@@ -1,4 +1,5 @@
 {
+  "currentPassword": "",
   "theme": "dark",
-  "password": "123"
+  "passwordHash": "249672093673e8ce78ff4b29fc121669:968be59bbc383b5f20c334a2f0705a01472d6cad41db7f923d88b536f2ee67a80059daaa56666efbd47d4b9b742c90bc4e3b05d039944c1e50d32b7188ad42cb"
 }

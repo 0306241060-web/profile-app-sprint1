@@ -2,13 +2,58 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
+const privateSessions = new Map();
+const privateLoginAttempts = new Map();
+const PRIVATE_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const NOTE_TOPICS = new Set(['cong-viec', 'ca-nhan', 'hoc-tap']);
+
+function hashPassword(password) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+    return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, storedHash) {
+    if (typeof password !== 'string' || typeof storedHash !== 'string') return false;
+    const [salt, hash] = storedHash.split(':');
+    if (!salt || !hash || !/^[a-f0-9]{128}$/i.test(hash)) return false;
+    const expected = Buffer.from(hash, 'hex');
+    const actual = crypto.scryptSync(password, salt, expected.length);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+function matchesProfilePassword(profile, password) {
+    if (verifyPassword(password, profile.passwordHash)) return true;
+    if (typeof password !== 'string' || typeof profile.password !== 'string') return false;
+    const submitted = Buffer.from(password);
+    const legacy = Buffer.from(profile.password);
+    return submitted.length === legacy.length && crypto.timingSafeEqual(submitted, legacy);
+}
+
+function requirePrivateSession(req, res, next) {
+    const token = req.get('Authorization')?.replace(/^Bearer\s+/i, '');
+    const expiresAt = privateSessions.get(token);
+    if (!token || !expiresAt || expiresAt <= Date.now()) {
+        if (token) privateSessions.delete(token);
+        return res.status(401).json({ success: false, message: 'Phiên đăng nhập hết hạn hoặc không hợp lệ' });
+    }
+    next();
+}
+
+function validateTopic(req, res, next) {
+    if (!NOTE_TOPICS.has(req.params.topic)) {
+        return res.status(400).json({ success: false, message: 'Chủ đề ghi chú không hợp lệ' });
+    }
+    next();
+}
 
 
 // ============================================================
@@ -21,13 +66,25 @@ const profilePath = path.join(
     'profile.json'
 );
 
+// Migrate existing plaintext credentials once, preserving the current password.
+try {
+    const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+    if (profile.password && !profile.passwordHash) {
+        profile.passwordHash = hashPassword(profile.password);
+        delete profile.password;
+        fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), 'utf8');
+    }
+} catch (error) {
+    console.error('LỖI MIGRATE PASSWORD:', error);
+}
+
 // GET PROFILE
 app.get('/api/profile', (req, res) => {
     try {
         const rawData = fs.readFileSync(profilePath, 'utf8');
         const profile = JSON.parse(rawData);
 
-        res.json(profile);
+        res.json({ theme: profile.theme || 'light' });
     } catch (error) {
         console.error('LỖI GET PROFILE:', error);
 
@@ -42,7 +99,22 @@ app.get('/api/profile', (req, res) => {
 // UPDATE PROFILE
 app.put('/api/profile', (req, res) => {
     try {
-        const newProfile = req.body;
+        const currentProfile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+        const { password, currentPassword, theme } = req.body;
+        if (theme !== undefined && !['light', 'dark'].includes(theme)) {
+            return res.status(400).json({ success: false, message: 'Giao diện không hợp lệ' });
+        }
+        if (password && (typeof password !== 'string' || password.length < 4)) {
+            return res.status(400).json({ success: false, message: 'Mật khẩu mới cần tối thiểu 4 ký tự' });
+        }
+        if (password && (currentProfile.passwordHash || currentProfile.password) && !matchesProfilePassword(currentProfile, currentPassword)) {
+            return res.status(401).json({ success: false, message: 'Mật khẩu hiện tại không đúng' });
+        }
+        const newProfile = { ...currentProfile, theme: theme || currentProfile.theme || 'light' };
+        if (password) {
+            newProfile.passwordHash = hashPassword(password);
+            delete newProfile.password;
+        }
 
         fs.writeFileSync(
             profilePath,
@@ -102,7 +174,7 @@ const getFilePath = (topic) => {
 // GET /api/notes/:topic
 // ------------------------------------------------------------
 
-app.get('/api/notes/:topic', (req, res) => {
+app.get('/api/notes/:topic', validateTopic, (req, res) => {
     const filePath = getFilePath(req.params.topic);
 
     try {
@@ -137,7 +209,7 @@ app.get('/api/notes/:topic', (req, res) => {
 // POST /api/notes/:topic
 // ------------------------------------------------------------
 
-app.post('/api/notes/:topic', (req, res) => {
+app.post('/api/notes/:topic', validateTopic, (req, res) => {
     const filePath = getFilePath(req.params.topic);
 
     try {
@@ -193,7 +265,7 @@ app.post('/api/notes/:topic', (req, res) => {
 // PUT /api/notes/:topic/:id
 // ------------------------------------------------------------
 
-app.put('/api/notes/:topic/:id', (req, res) => {
+app.put('/api/notes/:topic/:id', validateTopic, (req, res) => {
     const filePath = getFilePath(req.params.topic);
     const id = req.params.id;
 
@@ -253,7 +325,7 @@ app.put('/api/notes/:topic/:id', (req, res) => {
 // DELETE /api/notes/:topic/:id
 // ------------------------------------------------------------
 
-app.delete('/api/notes/:topic/:id', (req, res) => {
+app.delete('/api/notes/:topic/:id', validateTopic, (req, res) => {
     const filePath = getFilePath(req.params.topic);
     const id = req.params.id;
 
@@ -337,6 +409,12 @@ if (!fs.existsSync(privateNotesFile)) {
 // ------------------------------------------------------------
 
 app.post('/api/private/auth', (req, res) => {
+    const clientKey = req.ip;
+    const now = Date.now();
+    const attempt = privateLoginAttempts.get(clientKey);
+    if (attempt && attempt.lockedUntil > now) {
+        return res.status(429).json({ success: false, message: 'Thử đăng nhập quá nhiều lần. Vui lòng chờ 15 phút.' });
+    }
     try {
         const profile = JSON.parse(
             fs.readFileSync(
@@ -345,11 +423,28 @@ app.post('/api/private/auth', (req, res) => {
             )
         );
 
-        if (profile.password === req.body.password) {
-            return res.json({
-                success: true
-            });
+        const password = req.body.password;
+        const isLegacyMatch = typeof password === 'string' && profile.password === password;
+        if (matchesProfilePassword(profile, password)) {
+            if (isLegacyMatch && !profile.passwordHash) {
+                profile.passwordHash = hashPassword(password);
+                delete profile.password;
+                fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), 'utf8');
+            }
+            for (const [sessionToken, expiresAt] of privateSessions) {
+                if (expiresAt <= Date.now()) privateSessions.delete(sessionToken);
+            }
+            const token = crypto.randomBytes(32).toString('hex');
+            privateSessions.set(token, Date.now() + PRIVATE_SESSION_TTL_MS);
+            privateLoginAttempts.delete(clientKey);
+            return res.json({ success: true, token, expiresIn: PRIVATE_SESSION_TTL_MS });
         }
+
+        const nextAttempt = attempt && attempt.windowStartedAt > now - 15 * 60 * 1000
+            ? { count: attempt.count + 1, windowStartedAt: attempt.windowStartedAt, lockedUntil: 0 }
+            : { count: 1, windowStartedAt: now, lockedUntil: 0 };
+        if (nextAttempt.count >= 5) nextAttempt.lockedUntil = now + 15 * 60 * 1000;
+        privateLoginAttempts.set(clientKey, nextAttempt);
 
         res.status(401).json({
             success: false,
@@ -371,6 +466,8 @@ app.post('/api/private/auth', (req, res) => {
 // 2. LẤY DANH SÁCH GHI CHÚ RIÊNG TƯ
 // GET /api/private/notes
 // ------------------------------------------------------------
+
+app.use('/api/private/notes', requirePrivateSession);
 
 app.get('/api/private/notes', (req, res) => {
     try {
