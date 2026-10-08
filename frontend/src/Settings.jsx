@@ -1,43 +1,128 @@
-import React, { useEffect } from 'react';
-import { Link, Outlet } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 
-function Layout() {
-  // Hàm áp dụng theme cho toàn bộ trang
-  const applyTheme = (theme) => {
-    document.body.style.backgroundColor = theme === 'dark' ? '#333' : '#fff';
-    document.body.style.color = theme === 'dark' ? '#fff' : '#000';
-  };
+function Settings() {
+  const { isDark } = useOutletContext() || {};
+  const [password, setPassword] = useState('');
+  const [theme, setTheme] = useState('light');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ text: '', type: '' });
 
-  // Tải thông tin Profile/Theme ngay khi load bất kỳ trang nào
+  // Lấy cài đặt hiện tại từ Backend khi load trang
   useEffect(() => {
     fetch('http://localhost:5000/api/profile')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.theme) {
-          applyTheme(data.theme);
-        }
+      .then((res) => {
+        if (!res.ok) throw new Error('Không thể kết nối Backend');
+        return res.json();
       })
-      .catch((err) => console.error('Lỗi tải cấu hình:', err));
+      .then((data) => {
+        if (data.password) setPassword(data.password);
+        if (data.theme) setTheme(data.theme);
+      })
+      .catch((err) => console.error('Lỗi load profile:', err));
   }, []);
 
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Sidebar navigation */}
-      <nav style={{ width: '200px', padding: '20px', borderRight: '1px solid #ccc' }}>
-        <h3>Menu</h3>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          <li style={{ marginBottom: '10px' }}><Link to="/">Trang chủ</Link></li>
-          <li style={{ marginBottom: '10px' }}><Link to="/settings">Cài đặt</Link></li>
-          <li style={{ marginBottom: '10px' }}><Link to="/private">Vùng kín</Link></li>
-        </ul>
-      </nav>
+  const handleSave = () => {
+    setLoading(true);
+    setMessage({ text: '', type: '' });
 
-      {/* Main Content Area */}
-      <main style={{ flex: 1, padding: '20px' }}>
-        <Outlet />
-      </main>
+    fetch('http://localhost:5000/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, theme })
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Lỗi server khi lưu');
+        return res.json();
+      })
+      .then((data) => {
+        setLoading(false);
+        setMessage({ text: '✅ Đã lưu thay đổi thành công!', type: 'success' });
+
+        // PHÁT SỰ KIỆN ĐỔI THEME TOÀN APP CHỈ KHI NÚT LƯU ĐƯỢC BẤM VÀ THÀNH CÔNG
+        window.dispatchEvent(new CustomEvent('themeChange', { detail: theme }));
+
+        setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+      })
+      .catch((err) => {
+        setLoading(false);
+        setMessage({ text: '❌ Lỗi: Không kết nối được với Backend (Port 5000)', type: 'error' });
+        console.error('Lỗi save profile:', err);
+      });
+  };
+
+  const cardBg = isDark ? '#242526' : '#ffffff';
+  const borderCol = isDark ? '#393a3b' : '#e4e6eb';
+  const inputBg = isDark ? '#3a3b3c' : '#f0f2f5';
+  const textColor = isDark ? '#e4e6eb' : '#050505';
+
+  return (
+    <div style={{ maxWidth: '600px', margin: '20px auto' }}>
+      <h1 style={{ fontSize: '26px', fontWeight: '800', marginBottom: '24px', color: textColor, textAlign: 'center' }}>⚙️ Cài đặt hệ thống</h1>
+
+      {message.text && (
+        <div style={{
+          padding: '14px',
+          backgroundColor: message.type === 'success' ? '#dcfce7' : '#fee2e2',
+          color: message.type === 'success' ? '#15803d' : '#b91c1c',
+          borderRadius: '10px',
+          marginBottom: '20px',
+          fontSize: '14px',
+          textAlign: 'center',
+          fontWeight: '600'
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      <div style={{ backgroundColor: cardBg, border: `1px solid ${borderCol}`, padding: '32px', borderRadius: '16px', boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <label style={{ display: 'block', fontWeight: '700', marginBottom: '8px', fontSize: '14px', color: textColor }}>
+            🔑 Mật khẩu Vùng kín
+          </label>
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: `1px solid ${borderCol}`, outline: 'none', boxSizing: 'border-box', fontSize: '15px', backgroundColor: inputBg, color: textColor }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '32px' }}>
+          <label style={{ display: 'block', fontWeight: '700', marginBottom: '8px', fontSize: '14px', color: textColor }}>
+            🎨 Giao diện (Theme)
+          </label>
+          <select
+            value={theme}
+            onChange={(e) => setTheme(e.target.value)} // Chọn thoải mái, chưa đổi ngay
+            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: `1px solid ${borderCol}`, outline: 'none', fontSize: '15px', backgroundColor: inputBg, color: textColor, fontWeight: '500' }}
+          >
+            <option value="light">☀️ Sáng (Light Mode)</option>
+            <option value="dark">🌙 Tối (Dark Mode - FB Style)</option>
+          </select>
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '12px',
+            backgroundColor: loading ? '#a5b4fc' : '#6366f1',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: '700',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontSize: '15px',
+            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+          }}
+        >
+          {loading ? '⏳ Đang lưu...' : 'Lưu thay đổi'}
+        </button>
+      </div>
     </div>
   );
 }
 
-export default Layout;
+export default Settings;
