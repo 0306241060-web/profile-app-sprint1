@@ -62,7 +62,7 @@ function Settings() {
 
   return (
     <div style={{ maxWidth: '600px', margin: '20px auto' }}>
-      <h1 style={{ fontSize: '26px', fontWeight: '800', marginBottom: '24px', color: textColor, textAlign: 'center' }}>⚙️ Cài đặt hệ thống</h1>
+      <h1 style={{ fontSize: '26px', fontWeight: '800', marginBottom: '24px', color: textColor, textAlign: 'center' }}>👤 Thông tin cá nhân</h1>
 
       {message.text && (
         <div role="status" style={{ padding: '14px', backgroundColor: message.type === 'success' ? (isDark ? '#173b2a' : '#dcfce7') : (isDark ? '#442525' : '#fee2e2'), color: message.type === 'success' ? (isDark ? '#86efac' : '#15803d') : (isDark ? '#fca5a5' : '#b91c1c'), borderRadius: '10px', marginBottom: '20px', fontSize: '14px', textAlign: 'center', fontWeight: '600' }}>
