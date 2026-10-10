@@ -1,36 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { useAppContext } from './AppContext';
 
 function Layout() {
-  const [theme, setTheme] = useState('light');
-
-  // Lấy theme ban đầu
-  const fetchTheme = () => {
-    fetch('http://localhost:5000/api/profile')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.theme) setTheme(data.theme);
-      })
-      .catch((err) => console.error(err));
-  };
-
-  useEffect(() => {
-    fetchTheme();
-
-    // Lắng nghe tín hiệu khi và chỉ khi bấm "Lưu thay đổi"
-    const handleThemeChange = (e) => {
-      if (e.detail) {
-        setTheme(e.detail);
-      } else {
-        fetchTheme();
-      }
-    };
-
-    window.addEventListener('themeChange', handleThemeChange);
-    return () => window.removeEventListener('themeChange', handleThemeChange);
-  }, []);
-
-  const isDark = theme === 'dark';
+  const { isDark, displayName } = useAppContext();
 
   // Áp dụng màu nền nền body chuẩn Dark Mode khi theme state cập nhật
   useEffect(() => {
@@ -92,7 +65,7 @@ function Layout() {
           }}>N</div>
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: '800', margin: 0, color: isDark ? '#f0f2f5' : '#111827' }}>NoteApp Pro</h2>
-            <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: '600', textTransform: 'uppercase' }}>Workspace</span>
+            <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: '600' }}>{displayName || 'Workspace'}</span>
           </div>
         </div>
 
@@ -105,7 +78,7 @@ function Layout() {
 
       {/* Main Outlet */}
       <main className="app-main" style={{ flex: 1, padding: '32px 48px', minWidth: 0, boxSizing: 'border-box' }}>
-        <Outlet context={{ isDark }} />
+          <Outlet context={{ isDark, displayName }} />
       </main>
     </div>
   );

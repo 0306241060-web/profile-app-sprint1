@@ -84,7 +84,11 @@ app.get('/api/profile', (req, res) => {
         const rawData = fs.readFileSync(profilePath, 'utf8');
         const profile = JSON.parse(rawData);
 
-        res.json({ theme: profile.theme || 'light' });
+        res.json({
+            displayName: profile.displayName || '',
+            theme: profile.theme || 'light',
+            passwordConfigured: Boolean(profile.passwordHash || profile.password)
+        });
     } catch (error) {
         console.error('LỖI GET PROFILE:', error);
 
@@ -97,20 +101,33 @@ app.get('/api/profile', (req, res) => {
 
 
 // UPDATE PROFILE
-app.put('/api/profile', (req, res) => {
+const updateProfile = (req, res) => {
     try {
         const currentProfile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
-        const { password, currentPassword, theme } = req.body;
+        const { displayName, password, currentPassword, theme } = req.body;
+        if (displayName !== undefined && (typeof displayName !== 'string' || displayName.trim().length > 80)) {
+            return res.status(400).json({ success: false, message: 'Tên hiển thị không hợp lệ (tối đa 80 ký tự)' });
+        }
         if (theme !== undefined && !['light', 'dark'].includes(theme)) {
             return res.status(400).json({ success: false, message: 'Giao diện không hợp lệ' });
         }
-        if (password && (typeof password !== 'string' || password.length < 4)) {
+        if (password !== undefined && (typeof password !== 'string' || (password.length > 0 && password.length < 4))) {
             return res.status(400).json({ success: false, message: 'Mật khẩu mới cần tối thiểu 4 ký tự' });
         }
         if (password && (currentProfile.passwordHash || currentProfile.password) && !matchesProfilePassword(currentProfile, currentPassword)) {
             return res.status(401).json({ success: false, message: 'Mật khẩu hiện tại không đúng' });
         }
-        const newProfile = { ...currentProfile, theme: theme || currentProfile.theme || 'light' };
+        if (password && (currentProfile.passwordHash || currentProfile.password) && matchesProfilePassword(currentProfile, password)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Mật khẩu mới trùng với mật khẩu hiện tại. Vui lòng chọn một mật khẩu khác.'
+            });
+        }
+        const newProfile = {
+            ...currentProfile,
+            displayName: displayName === undefined ? (currentProfile.displayName || '') : displayName.trim(),
+            theme: theme || currentProfile.theme || 'light'
+        };
         if (password) {
             newProfile.passwordHash = hashPassword(password);
             delete newProfile.password;
@@ -124,7 +141,12 @@ app.put('/api/profile', (req, res) => {
 
         res.json({
             success: true,
-            message: 'Đã cập nhật Profile'
+            message: 'Đã cập nhật Profile',
+            profile: {
+                displayName: newProfile.displayName,
+                theme: newProfile.theme,
+                passwordConfigured: Boolean(newProfile.passwordHash || newProfile.password)
+            }
         });
     } catch (error) {
         console.error('LỖI UPDATE PROFILE:', error);
@@ -134,7 +156,10 @@ app.put('/api/profile', (req, res) => {
             message: 'Lỗi ghi file profile'
         });
     }
-});
+};
+
+app.put('/api/profile', updateProfile);
+app.post('/api/profile', updateProfile);
 
 
 // ============================================================
