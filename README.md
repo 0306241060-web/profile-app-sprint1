@@ -27,10 +27,10 @@ Dự án được chia làm 2 phần chạy độc lập. Vui lòng mở 2 cửa
 
 Mở Terminal 1, di chuyển vào thư mục `backend` và chạy lệnh:
 
-bash
-cd backend
-npm install
-node server.js
+    cd backend
+    npm install
+    node server.js
+
 Lưu ý: Backend sẽ chạy tại `http://localhost:5000`. Hệ thống sẽ tự động sinh thư mục `data/` chứa các file JSON. Vui lòng không xóa thư mục này khi hệ thống đang chạy.
 
 ### Bước 2: Khởi động Frontend (Giao diện)
