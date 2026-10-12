@@ -70,6 +70,7 @@ function Layout() {
         </div>
 
         <nav style={{ flex: 1 }}>
+          <NavLink to="/" end style={navStyle}>🏠 <span>Trang chủ</span></NavLink>
           <NavLink to="/notes" style={navStyle}>📝 <span>Ghi chú chung</span></NavLink>
           <NavLink to="/private" style={navStyle}>🔒 <span>Vùng kín</span></NavLink>
           <NavLink to="/settings" style={navStyle}>👤 <span>Profile</span></NavLink>
