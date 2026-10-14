@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAppContext } from './AppContext';
 
@@ -12,20 +12,37 @@ function Settings() {
   const [passwordConfigured, setPasswordConfigured] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
+  const editedFields = useRef(new Set());
 
   useEffect(() => {
+    let isCurrent = true;
     refreshProfile()
       .then((data) => {
-        setDisplayName(data.displayName || '');
-        setTheme(data.theme || 'light');
+        if (!isCurrent) return;
+        if (!editedFields.current.has('displayName')) setDisplayName(data.displayName || '');
+        if (!editedFields.current.has('theme')) setTheme(data.theme || 'light');
         setPasswordConfigured(Boolean(data.passwordConfigured));
       })
-      .catch((error) => setMessage({ text: error.message, type: 'error' }));
+      .catch((error) => {
+        if (isCurrent) setMessage({ text: error.message, type: 'error' });
+      });
+
+    return () => { isCurrent = false; };
   }, [refreshProfile]);
 
   const handleSave = async (event) => {
     event.preventDefault();
     if (loading) return;
+    if (!displayName.trim()) {
+      setMessage({ text: 'Vui lòng nhập tên hiển thị trước khi lưu.', type: 'error' });
+      document.getElementById('display-name')?.focus();
+      return;
+    }
+    if (currentPassword && !password) {
+      setMessage({ text: 'Bạn đã nhập mật khẩu hiện tại. Vui lòng nhập mật khẩu vùng kín mới.', type: 'error' });
+      document.getElementById('new-private-password')?.focus();
+      return;
+    }
     setLoading(true);
     setMessage({ text: '', type: '' });
 
@@ -57,6 +74,7 @@ function Settings() {
   const borderCol = isDark ? '#393a3b' : '#e4e6eb';
   const inputBg = isDark ? '#3a3b3c' : '#f0f2f5';
   const textColor = isDark ? '#e4e6eb' : '#050505';
+  const showMessage = message.text && (message.type !== 'success' || Boolean(displayName.trim()));
   const labelStyle = { display: 'block', fontWeight: '700', marginBottom: '8px', fontSize: '14px', color: textColor };
   const inputStyle = { width: '100%', padding: '12px', borderRadius: '8px', border: `1px solid ${borderCol}`, outline: 'none', boxSizing: 'border-box', fontSize: '15px', backgroundColor: inputBg, color: textColor };
 
@@ -64,16 +82,16 @@ function Settings() {
     <div style={{ maxWidth: '600px', margin: '20px auto' }}>
       <h1 style={{ fontSize: '26px', fontWeight: '800', marginBottom: '24px', color: textColor, textAlign: 'center' }}>👤 Thông tin cá nhân</h1>
 
-      {message.text && (
+      {showMessage && (
         <div role="status" style={{ padding: '14px', backgroundColor: message.type === 'success' ? (isDark ? '#173b2a' : '#dcfce7') : (isDark ? '#442525' : '#fee2e2'), color: message.type === 'success' ? (isDark ? '#86efac' : '#15803d') : (isDark ? '#fca5a5' : '#b91c1c'), borderRadius: '10px', marginBottom: '20px', fontSize: '14px', textAlign: 'center', fontWeight: '600' }}>
           {message.text}
         </div>
       )}
 
-      <form onSubmit={handleSave} style={{ backgroundColor: cardBg, border: `1px solid ${borderCol}`, padding: '32px', borderRadius: '16px', boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
+      <form noValidate onSubmit={handleSave} style={{ backgroundColor: cardBg, border: `1px solid ${borderCol}`, padding: '32px', borderRadius: '16px', boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
         <div style={{ marginBottom: '24px' }}>
           <label htmlFor="display-name" style={labelStyle}>Tên hiển thị</label>
-          <input id="display-name" type="text" autoComplete="name" maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Nhập tên hiển thị" style={inputStyle} />
+          <input id="display-name" type="text" autoComplete="name" maxLength={80} required value={displayName} onChange={(event) => { editedFields.current.add('displayName'); setDisplayName(event.target.value); setMessage({ text: '', type: '' }); }} placeholder="Nhập tên hiển thị" style={inputStyle} />
         </div>
 
         <div style={{ marginBottom: '24px' }}>
@@ -88,7 +106,7 @@ function Settings() {
 
         <div style={{ marginBottom: '32px' }}>
           <label htmlFor="profile-theme" style={labelStyle}>🎨 Giao diện</label>
-          <select id="profile-theme" value={theme} onChange={(event) => setTheme(event.target.value)} style={{ ...inputStyle, fontWeight: '500' }}>
+          <select id="profile-theme" value={theme} onChange={(event) => { editedFields.current.add('theme'); setTheme(event.target.value); }} style={{ ...inputStyle, fontWeight: '500' }}>
             <option value="light">☀️ Sáng</option>
             <option value="dark">🌙 Tối</option>
           </select>

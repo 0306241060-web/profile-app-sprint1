@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import NoteCard from './NoteCard';
 
 function PrivateNotes() {
   const { isDark } = useOutletContext() || {};
@@ -10,6 +11,7 @@ function PrivateNotes() {
   const [isLoading, setIsLoading] = useState(false);
   const [notes, setNotes] = useState([]);
   const [formData, setFormData] = useState({ title: '', content: '' });
+  const [editingId, setEditingId] = useState(null);
 
   const handleLogin = () => {
     if (!passwordInput || isLoading) return;
@@ -27,7 +29,7 @@ function PrivateNotes() {
           setIsUnlocked(true);
           fetchPrivateNotes(data.token);
         } else {
-          setError('Mật khẩu không đúng. Vui lòng thử lại.');
+          window.alert('Sai mật khẩu');
           setPasswordInput('');
         }
       })
@@ -55,8 +57,9 @@ function PrivateNotes() {
 
   const handleSave = () => {
     if (!formData.title.trim() && !formData.content.trim()) return;
-    fetch('http://localhost:5000/api/private/notes', {
-      method: 'POST',
+    const isEditing = Boolean(editingId);
+    fetch(`http://localhost:5000/api/private/notes${isEditing ? `/${editingId}` : ''}`, {
+      method: isEditing ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
       body: JSON.stringify(formData)
     })
@@ -68,13 +71,28 @@ function PrivateNotes() {
       .then((saved) => {
         if (!saved) return;
         fetchPrivateNotes();
+        setEditingId(null);
         setFormData({ title: '', content: '' });
         setError('');
       })
       .catch(() => setError('Không thể lưu ghi chú riêng tư.'));
   };
 
+  const handleEdit = (note) => {
+    setEditingId(note.id);
+    setFormData({ title: note.title || '', content: note.content || '' });
+    setError('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setFormData({ title: '', content: '' });
+    setError('');
+  };
+
   const handleDelete = (id) => {
+    const note = notes.find((item) => item.id === id);
+    if (!note || !window.confirm(`Bạn có chắc chắn muốn xóa ghi chú "${note.title || 'Không tiêu đề'}" không?`)) return;
     fetch(`http://localhost:5000/api/private/notes/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${sessionToken}` }
@@ -136,31 +154,26 @@ function PrivateNotes() {
           onChange={(e) => setFormData({ ...formData, content: e.target.value })}
           style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${isDark ? '#555' : '#e5e7eb'}`, height: '90px', marginBottom: '12px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '14px', backgroundColor: isDark ? '#3a3b3c' : '#fff', color: isDark ? '#e4e6eb' : '#111827' }}
         />
-        <button 
-          onClick={handleSave} 
-          style={{ backgroundColor: '#dc2626', color: 'white', padding: '8px 20px', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}
-        >
-          + Lưu ghi chú bí mật
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {editingId && (
+            <button type="button" onClick={cancelEdit} style={{ backgroundColor: isDark ? '#3a3b3c' : '#e5e7eb', color: isDark ? '#e4e6eb' : '#374151', padding: '8px 16px', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
+              Hủy sửa
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            style={{ backgroundColor: '#dc2626', color: 'white', padding: '8px 20px', border: 'none', borderRadius: '6px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}
+          >
+            {editingId ? 'Cập nhật ghi chú' : '+ Lưu ghi chú bí mật'}
+          </button>
+        </div>
       </div>
 
       {/* Grid Danh sách Ghi chú */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
         {notes.map((note) => (
-          <div key={note.id} style={{ backgroundColor: isDark ? '#2c2324' : '#fff5f5', border: `1px solid ${isDark ? '#553333' : '#fecaca'}`, padding: '18px', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '130px' }}>
-            <div>
-              <h4 style={{ margin: '0 0 8px 0', color: isDark ? '#fca5a5' : '#7f1d1d', fontSize: '16px' }}>{note.title}</h4>
-              <p style={{ margin: '0 0 16px 0', color: isDark ? '#d1d5db' : '#4b5563', fontSize: '14px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{note.content}</p>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button 
-                onClick={() => handleDelete(note.id)} 
-                style={{ backgroundColor: 'transparent', color: '#ef4444', border: 'none', padding: '4px 8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}
-              >
-                🗑️ Xóa
-              </button>
-            </div>
-          </div>
+          <NoteCard key={note.id} note={note} isDark={isDark} privateMode onEdit={handleEdit} onDelete={handleDelete} />
         ))}
       </div>
     </div>

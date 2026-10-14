@@ -105,6 +105,12 @@ const updateProfile = (req, res) => {
     try {
         const currentProfile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
         const { displayName, password, currentPassword, theme } = req.body;
+        const nextDisplayName = displayName === undefined
+            ? (currentProfile.displayName || '').trim()
+            : (typeof displayName === 'string' ? displayName.trim() : '');
+        if (!nextDisplayName) {
+            return res.status(400).json({ success: false, message: 'Vui lòng nhập tên hiển thị trước khi lưu.' });
+        }
         if (displayName !== undefined && (typeof displayName !== 'string' || displayName.trim().length > 80)) {
             return res.status(400).json({ success: false, message: 'Tên hiển thị không hợp lệ (tối đa 80 ký tự)' });
         }
@@ -113,6 +119,9 @@ const updateProfile = (req, res) => {
         }
         if (password !== undefined && (typeof password !== 'string' || (password.length > 0 && password.length < 4))) {
             return res.status(400).json({ success: false, message: 'Mật khẩu mới cần tối thiểu 4 ký tự' });
+        }
+        if (currentPassword && !password) {
+            return res.status(400).json({ success: false, message: 'Bạn đã nhập mật khẩu hiện tại. Vui lòng nhập mật khẩu vùng kín mới.' });
         }
         if (password && (currentProfile.passwordHash || currentProfile.password) && !matchesProfilePassword(currentProfile, currentPassword)) {
             return res.status(401).json({ success: false, message: 'Mật khẩu hiện tại không đúng' });
@@ -125,7 +134,7 @@ const updateProfile = (req, res) => {
         }
         const newProfile = {
             ...currentProfile,
-            displayName: displayName === undefined ? (currentProfile.displayName || '') : displayName.trim(),
+            displayName: nextDisplayName,
             theme: theme || currentProfile.theme || 'light'
         };
         if (password) {
@@ -362,26 +371,24 @@ app.delete('/api/notes/:topic/:id', validateTopic, (req, res) => {
             });
         }
 
-        let notes = JSON.parse(
+        const notes = JSON.parse(
             fs.readFileSync(filePath, 'utf8')
         );
 
-        const index = notes.findIndex(
-            note => note.id === id
-        );
+        const deletedNote = notes.find(note => note.id === id);
 
-        if (index === -1) {
+        if (!deletedNote) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy ghi chú'
             });
         }
 
-        const deletedNote = notes.splice(index, 1)[0];
+        const updatedNotes = notes.filter(note => note.id !== id);
 
         fs.writeFileSync(
             filePath,
-            JSON.stringify(notes, null, 2),
+            JSON.stringify(updatedNotes, null, 2),
             'utf8'
         );
 
@@ -549,12 +556,6 @@ app.post('/api/private/notes', (req, res) => {
             JSON.stringify(notes, null, 2),
             'utf8'
         );
-
-        console.log(
-            'ĐÃ GHI PRIVATE NOTE:',
-            newNote
-        );  
-
         res.status(201).json({
             success: true,
             message: 'Đã thêm ghi chú kín',

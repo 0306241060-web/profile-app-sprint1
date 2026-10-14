@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import NoteCard from './NoteCard';
 
 const topics = { 'Công việc': 'cong-viec', 'Cá nhân': 'ca-nhan', 'Học tập': 'hoc-tap' };
 
@@ -10,22 +11,31 @@ function Notes() {
   const [selectedTag, setSelectedTag] = useState('All');
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ title: '', content: '', tag: 'Công việc', isPinned: false });
+  const fetchRequestId = useRef(0);
 
-  const fetchNotes = useCallback(() => {
-    Promise.all(Object.entries(topics).map(async ([tag, topic]) => {
+  const fetchNotes = useCallback((tag = 'All') => {
+    const requestId = ++fetchRequestId.current;
+    const topicsToFetch = tag === 'All'
+      ? Object.entries(topics)
+      : Object.entries(topics).filter(([topicTag]) => topicTag === tag);
+
+    return Promise.all(topicsToFetch.map(async ([topicTag, topic]) => {
       const res = await fetch(`http://localhost:5000/api/notes/${topic}`);
       if (!res.ok) throw new Error('Không thể tải ghi chú');
       const data = await res.json();
-      return (Array.isArray(data) ? data : []).map((note) => ({ ...note, tag }));
+      return (Array.isArray(data) ? data : []).map((note) => ({ ...note, tag: topicTag }));
     }))
       .then((groups) => {
+        // Bỏ qua phản hồi cũ nếu người dùng vừa chuyển sang chủ đề khác.
+        if (requestId !== fetchRequestId.current) return;
         const pinnedIds = JSON.parse(localStorage.getItem('pinnedNoteIds') || '[]');
         setNotes(groups.flat().map((note) => ({ ...note, isPinned: pinnedIds.includes(note.id) })));
-      })
-      .catch((err) => console.error(err));
+      });
   }, []);
 
-  useEffect(() => { fetchNotes(); }, [fetchNotes]);
+  useEffect(() => {
+    fetchNotes(selectedTag).catch((err) => console.error(err));
+  }, [fetchNotes, selectedTag]);
 
   const handleSave = () => {
     if (!formData.title.trim() && !formData.content.trim()) return;
@@ -36,7 +46,7 @@ function Notes() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       }).then((res) => { if (!res.ok) throw new Error('Không thể cập nhật ghi chú'); }).then(() => {
-        fetchNotes();
+        fetchNotes(selectedTag);
         setEditingId(null);
         setFormData({ title: '', content: '', tag: 'Công việc', isPinned: false });
       });
@@ -46,7 +56,9 @@ function Notes() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, createdAt: new Date().toLocaleDateString('vi-VN') })
       }).then((res) => { if (!res.ok) throw new Error('Không thể thêm ghi chú'); }).then(() => {
-        fetchNotes();
+        const savedTag = formData.tag;
+        if (selectedTag === savedTag) fetchNotes(savedTag);
+        else setSelectedTag(savedTag);
         setFormData({ title: '', content: '', tag: 'Công việc', isPinned: false });
       });
     }
@@ -60,8 +72,10 @@ function Notes() {
   const handleDelete = (id) => {
     const note = notes.find((item) => item.id === id);
     if (!note) return;
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ghi chú "${note.title || 'Không tiêu đề'}" không?`)) return;
+
     fetch(`http://localhost:5000/api/notes/${topics[note.tag]}/${id}`, { method: 'DELETE' })
-      .then((res) => { if (!res.ok) throw new Error('Không thể xóa ghi chú'); return fetchNotes(); })
+      .then((res) => { if (!res.ok) throw new Error('Không thể xóa ghi chú'); return fetchNotes(selectedTag); })
       .catch((err) => console.error(err));
   };
 
@@ -177,7 +191,7 @@ function Notes() {
           <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#6366f1', letterSpacing: '0.05em', marginBottom: '14px', fontWeight: '800' }}>📌 Ghi chú đã ghim</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
             {pinnedNotes.map((note) => (
-              <CardItem key={note.id} note={note} isDark={isDark} onDelete={handleDelete} onEdit={handleEdit} onTogglePin={togglePin} />
+              <NoteCard key={note.id} note={note} isDark={isDark} onDelete={handleDelete} onEdit={handleEdit} onTogglePin={togglePin} />
             ))}
           </div>
         </div>
@@ -188,45 +202,9 @@ function Notes() {
         {pinnedNotes.length > 0 && <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: isDark ? '#b0b3b8' : '#656b75', letterSpacing: '0.05em', marginBottom: '14px', fontWeight: '800' }}>Danh sách ghi chú</h3>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
           {unpinnedNotes.map((note) => (
-            <CardItem key={note.id} note={note} isDark={isDark} onDelete={handleDelete} onEdit={handleEdit} onTogglePin={togglePin} />
+            <NoteCard key={note.id} note={note} isDark={isDark} onDelete={handleDelete} onEdit={handleEdit} onTogglePin={togglePin} />
           ))}
           {filteredNotes.length === 0 && <p style={{ gridColumn: '1 / -1', color: isDark ? '#b0b3b8' : '#656b75', textAlign: 'center', padding: '32px 16px' }}>{search || selectedTag !== 'All' ? 'Không tìm thấy ghi chú phù hợp.' : 'Chưa có ghi chú nào. Hãy tạo ghi chú đầu tiên của bạn.'}</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CardItem({ note, isDark, onDelete, onEdit, onTogglePin }) {
-  const words = note.content ? note.content.trim().split(/\s+/).length : 0;
-  return (
-    <div style={{
-      backgroundColor: isDark ? '#242526' : '#ffffff',
-      border: isDark ? '1px solid #393a3b' : '1px solid #e4e6eb',
-      padding: '20px',
-      borderRadius: '14px',
-      display: 'flex',
-      flexDirection: 'column',
-      justify: 'space-between',
-      minHeight: '150px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
-    }}>
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-          <h4 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: isDark ? '#e4e6eb' : '#050505' }}>{note.title || 'Không tiêu đề'}</h4>
-          <button onClick={() => onTogglePin(note)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: note.isPinned ? 1 : 0.3, fontSize: '16px' }}>📌</button>
-        </div>
-        <p style={{ margin: '0 0 20px 0', fontSize: '14px', lineHeight: '1.6', color: isDark ? '#b0b3b8' : '#4b5563', whiteSpace: 'pre-wrap' }}>{note.content}</p>
-      </div>
-
-      <div style={{ borderTop: isDark ? '1px solid #393a3b' : '1px solid #f0f2f5', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '12px', backgroundColor: isDark ? '#3a3b3c' : '#f0f2f5', color: isDark ? '#e4e6eb' : '#4b5563', fontWeight: '600' }}>{note.tag || 'Cá nhân'}</span>
-          <span style={{ fontSize: '11px', color: isDark ? '#b0b3b8' : '#9ca3af' }}>{words} từ</span>
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => onEdit(note)} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Sửa</button>
-          <button onClick={() => onDelete(note.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Xóa</button>
         </div>
       </div>
     </div>
